@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './RegistrationPage.css';
 
-const RegistrationPage = ({ onRegister }) => {
+const RegistrationPage = ({ onRegister, onNavigate }) => {
   const [userType, setUserType] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -15,7 +15,8 @@ const RegistrationPage = ({ onRegister }) => {
     childName: '',
     childGrade: '',
     pickupPoint: '',
-    dropoffPoint: ''
+    dropoffPoint: '',
+    adminCode: ''
   });
 
   const handleInputChange = (e) => {
@@ -28,6 +29,10 @@ const RegistrationPage = ({ onRegister }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (userType === 'admin' && formData.adminCode !== 'ADMIN2026') {
+      alert('Invalid admin access code. Please try again.');
+      return;
+    }
     onRegister({
       type: userType,
       ...formData
@@ -247,6 +252,45 @@ const RegistrationPage = ({ onRegister }) => {
     </form>
   );
 
+  const renderAdminForm = () => (
+    <form onSubmit={handleSubmit} className="registration-form">
+      <h3>Admin Registration</h3>
+      <p className="admin-note">⚠️ Admin access is restricted. Enter the access code provided by your organisation.</p>
+
+      <div className="form-group">
+        <label>Full Name *</label>
+        <input type="text" name="name" required value={formData.name}
+          onChange={handleInputChange} placeholder="Enter your full name" />
+      </div>
+
+      <div className="form-group">
+        <label>Admin ID *</label>
+        <input type="text" name="id" required value={formData.id}
+          onChange={handleInputChange} placeholder="Enter admin ID" />
+      </div>
+
+      <div className="form-group">
+        <label>Phone Number *</label>
+        <input type="tel" name="phone" required value={formData.phone}
+          onChange={handleInputChange} placeholder="Enter phone number" />
+      </div>
+
+      <div className="form-group">
+        <label>Email</label>
+        <input type="email" name="email" value={formData.email}
+          onChange={handleInputChange} placeholder="Enter email address" />
+      </div>
+
+      <div className="form-group">
+        <label>Admin Access Code *</label>
+        <input type="password" name="adminCode" required value={formData.adminCode}
+          onChange={handleInputChange} placeholder="Enter secret access code" />
+      </div>
+
+      <button type="submit" className="submit-btn">Access Admin Dashboard</button>
+    </form>
+  );
+
   return (
     <div className="registration-page">
       {!userType ? (
@@ -284,13 +328,28 @@ const RegistrationPage = ({ onRegister }) => {
                 <li>✓ Make payments online</li>
               </ul>
             </div>
+
+            <div 
+              className="type-card admin-card"
+              onClick={() => setUserType('admin')}
+            >
+              <div className="card-icon">🔑</div>
+              <h3>Admin</h3>
+              <p>Manage students, drivers, routes, and payments for the transport service</p>
+              <ul className="feature-list">
+                <li>✓ Manage students &amp; drivers</li>
+                <li>✓ View all routes</li>
+                <li>✓ Track all payments</li>
+                <li>✓ Generate reports</li>
+              </ul>
+            </div>
           </div>
           
           <button 
             className="back-btn"
-            onClick={() => window.history.back()}
+            onClick={() => onNavigate('home')}
           >
-            ← Back
+            ← Back to Home
           </button>
         </div>
       ) : (
@@ -302,7 +361,7 @@ const RegistrationPage = ({ onRegister }) => {
             ← Change Account Type
           </button>
           
-          {userType === 'driver' ? renderDriverForm() : renderParentForm()}
+          {userType === 'driver' ? renderDriverForm() : userType === 'admin' ? renderAdminForm() : renderParentForm()}
         </div>
       )}
     </div>
