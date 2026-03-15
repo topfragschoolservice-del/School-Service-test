@@ -1,17 +1,6 @@
 import React, { useState } from 'react';
 import './LoginPage.css';
-
-/*
-  LoginPage
-  ─────────
-  Looks up the user in localStorage (simulating a DB query).
-  In a real app this would POST to /api/auth/login and receive a JWT.
-
-  Demo credentials stored when you register:
-    • Driver / Parent / Admin — just use the ID + phone number used during registration.
-  Quick demo admin login:
-    • ID: admin1 | Phone: 0771234567  (after registering with admin code ADMIN2026)
-*/
+import { loginUser } from './api';
 
 const LoginPage = ({ onLogin, onNavigate }) => {
   const [userId, setUserId]   = useState('');
@@ -25,30 +14,20 @@ const LoginPage = ({ onLogin, onNavigate }) => {
     setError('');
     setLoading(true);
 
-    // Simulate a network delay
-    setTimeout(() => {
-      const saved = localStorage.getItem('schoolVanUser');
-
-      if (!saved) {
-        setError('No registered account found. Please register first.');
+    loginUser({
+      id: userId,
+      phone,
+      role: userType,
+    })
+      .then((response) => {
+        onLogin(response);
+      })
+      .catch((apiError) => {
+        setError(apiError.message || 'Unable to sign in right now.');
+      })
+      .finally(() => {
         setLoading(false);
-        return;
-      }
-
-      const user = JSON.parse(saved);
-
-      // Validate: ID + phone + role must all match
-      const idMatch    = user.id?.trim() === userId.trim();
-      const phoneMatch = user.phone?.replace(/[-\s]/g, '') === phone.replace(/[-\s]/g, '');
-      const typeMatch  = user.type === userType;
-
-      if (idMatch && phoneMatch && typeMatch) {
-        onLogin(user);
-      } else {
-        setError('Invalid credentials. Please check your ID, phone number, and account type.');
-      }
-      setLoading(false);
-    }, 700);
+      });
   };
 
   return (
@@ -57,6 +36,7 @@ const LoginPage = ({ onLogin, onNavigate }) => {
         <div className="login-logo">🚐</div>
         <h2>Welcome Back</h2>
         <p className="login-subtitle">Sign in to School Van Service</p>
+        <p className="login-subtitle">Demo accounts: `parent1`, `driver1`, `admin1` with their registered phone numbers.</p>
 
         <div className="role-tabs">
           {['parent', 'driver', 'admin'].map(role => (

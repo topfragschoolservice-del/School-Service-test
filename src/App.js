@@ -7,39 +7,75 @@ import RegistrationPage from './RegistrationPage';
 import DriverDashboard from './DriverDashboard';
 import ParentDashboard from './ParentDashboard';
 import AdminDashboard from './AdminDashboard';
+import { clearSession, fetchMe, getSession, saveSession } from './api';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
-  const [userType, setUserType] = useState(null);
+  const [user, setUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [booting, setBooting] = useState(true);
 
-  // Restore session on app start
   useEffect(() => {
-    const savedUser = localStorage.getItem('schoolVanUser');
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      setUserType(user.type);
-      setIsLoggedIn(true);
-      setCurrentPage('dashboard');
-    }
+    const restoreSession = async () => {
+      const session = getSession();
+
+      if (!session?.token) {
+        setBooting(false);
+        return;
+      }
+
+      try {
+        const response = await fetchMe();
+        const normalizedUser = {
+          ...response.user,
+          type: response.user.role,
+          id: response.user.accountId,
+          licenseNumber: response.user.driverProfile?.licenseNumber,
+          vehicleNumber: response.user.driverProfile?.vehicleNumber,
+          experience: response.user.driverProfile?.experience,
+          childName: response.user.parentProfile?.childName,
+          childGrade: response.user.parentProfile?.childGrade,
+          pickupPoint: response.user.parentProfile?.pickupPoint,
+          dropoffPoint: response.user.parentProfile?.dropoffPoint,
+        };
+
+        saveSession({ token: session.token, user: normalizedUser });
+        setUser(normalizedUser);
+        setIsLoggedIn(true);
+        setCurrentPage('dashboard');
+      } catch (error) {
+        clearSession();
+      } finally {
+        setBooting(false);
+      }
+    };
+
+    restoreSession();
   }, []);
 
-  const handleRegistration = (userData) => {
-    localStorage.setItem('schoolVanUser', JSON.stringify(userData));
-    setUserType(userData.type);
-    setIsLoggedIn(true);
-    setCurrentPage('dashboard');
-  };
+  const handleAuthSuccess = ({ token, user: userData }) => {
+    const normalizedUser = {
+      ...userData,
+      type: userData.role,
+      id: userData.accountId,
+      licenseNumber: userData.driverProfile?.licenseNumber,
+      vehicleNumber: userData.driverProfile?.vehicleNumber,
+      experience: userData.driverProfile?.experience,
+      childName: userData.parentProfile?.childName,
+      childGrade: userData.parentProfile?.childGrade,
+      pickupPoint: userData.parentProfile?.pickupPoint,
+      dropoffPoint: userData.parentProfile?.dropoffPoint,
+    };
 
-  const handleLogin = (userData) => {
-    setUserType(userData.type);
+    saveSession({ token, user: normalizedUser });
+    setUser(normalizedUser);
     setIsLoggedIn(true);
     setCurrentPage('dashboard');
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('schoolVanUser');
-    setUserType(null);
+    clearSession();
+    setUser(null);
     setIsLoggedIn(false);
     setCurrentPage('home');
   };
@@ -49,23 +85,27 @@ function App() {
   };
 
   const renderPage = () => {
+    if (booting) {
+      return <div className="homepage"><div className="hero-section"><div className="hero-content"><h2>Loading session...</h2></div></div></div>;
+    }
+
     if (!isLoggedIn) {
       switch (currentPage) {
         case 'register':
-          return <RegistrationPage onRegister={handleRegistration} onNavigate={navigateTo} />;
+          return <RegistrationPage onRegister={handleAuthSuccess} onNavigate={navigateTo} />;
         case 'login':
-          return <LoginPage onLogin={handleLogin} onNavigate={navigateTo} />;
+          return <LoginPage onLogin={handleAuthSuccess} onNavigate={navigateTo} />;
         default:
           return <HomePage onNavigate={navigateTo} />;
       }
     } else {
-      switch (userType) {
+      switch (user?.type) {
         case 'driver':
-          return <DriverDashboard onLogout={handleLogout} />;
+          return <DriverDashboard user={user} onLogout={handleLogout} />;
         case 'parent':
-          return <ParentDashboard onLogout={handleLogout} />;
+          return <ParentDashboard user={user} onLogout={handleLogout} />;
         case 'admin':
-          return <AdminDashboard onLogout={handleLogout} />;
+          return <AdminDashboard user={user} onLogout={handleLogout} />;
         default:
           return <HomePage onNavigate={navigateTo} />;
       }

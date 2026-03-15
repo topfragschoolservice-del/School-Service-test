@@ -1,62 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import './ParentDashboard.css';
+import {
+  fetchAssignedRoute,
+  fetchAttendance,
+  fetchLatestLocation,
+  fetchMyChildren,
+  fetchNotifications,
+  fetchParentReport,
+  fetchPayments,
+  markNotificationRead,
+  markParentAttendance,
+  payPayment,
+} from './api';
+import { getTodayKey, monthOptions } from './dateUtils';
 
-/* ─────────────────────────────────────────────
-   Simulated data helpers (localStorage-based)
-───────────────────────────────────────────── */
-const getTodayKey = () => new Date().toISOString().slice(0, 10);
-
-const getAttendanceHistory = () => {
-  const raw = localStorage.getItem('attendanceHistory');
-  return raw ? JSON.parse(raw) : {};
+const statusLabelMap = {
+  pending: 'Pending',
+  paid: 'Paid',
+  overdue: 'Overdue',
 };
 
-const saveAttendanceHistory = (history) => {
-  localStorage.setItem('attendanceHistory', JSON.stringify(history));
-};
+const toDisplayMonth = (month, year) =>
+  new Date(year, month - 1, 1).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
 
-const getNotifications = () => {
-  const raw = localStorage.getItem('parentNotifications');
-  if (raw) return JSON.parse(raw);
-  // Default seed notifications
-  return [
-    { id: 1, time: '07:45 AM', message: 'Van has departed from the depot.', read: false, type: 'info' },
-    { id: 2, time: '08:10 AM', message: 'Your child has been picked up successfully! 🎒', read: false, type: 'success' },
-    { id: 3, time: '01:30 PM', message: 'Van is on its way back. ETA: 20 min.', read: true, type: 'info' },
-    { id: 4, time: '01:52 PM', message: 'Your child has been dropped off safely! 🏠', read: true, type: 'success' },
-  ];
-};
+const TrackerPanel = ({ route, location, todayAttendance }) => {
+  const pickupDone = todayAttendance?.pickupStatus === 'picked-up';
+  const dropoffDone = todayAttendance?.dropoffStatus === 'dropped-off';
 
-const saveNotifications = (notifs) => {
-  localStorage.setItem('parentNotifications', JSON.stringify(notifs));
-};
-
-const getPaymentHistory = () => {
-  const raw = localStorage.getItem('paymentHistory');
-  if (raw) return JSON.parse(raw);
-  return [
-    { id: 1, month: 'January 2026',  amount: 3500, status: 'Paid',    date: '2026-01-05' },
-    { id: 2, month: 'February 2026', amount: 3500, status: 'Paid',    date: '2026-02-03' },
-    { id: 3, month: 'March 2026',    amount: 3500, status: 'Pending', date: null },
-  ];
-};
-
-/* ─────────────────────────────────────────────
-   Sub-components
-───────────────────────────────────────────── */
-
-/** Live tracker mock */
-const LiveTracker = ({ user }) => {
-  const [status, setStatus] = useState('On the way to school');
-  const [eta, setEta]       = useState('8 min');
-
-  const statuses = [
-    { label: 'Van departed depot',          eta: '20 min' },
-    { label: 'On the way to school',        eta: '8 min'  },
-    { label: 'Child picked up',             eta: '—'      },
-    { label: 'Arrived at school',           eta: '—'      },
-    { label: 'On the way home',             eta: '15 min' },
-    { label: 'Child dropped off safely 🏠', eta: '—'      },
+  const steps = [
+    'Van departed depot',
+    pickupDone ? 'Child picked up' : 'On the way to pickup point',
+    dropoffDone ? 'Child dropped off safely' : 'Journey in progress',
   ];
 
   return (
@@ -65,92 +42,65 @@ const LiveTracker = ({ user }) => {
       <div className="map-placeholder">
         <div className="map-inner">
           <div className="van-icon">🚐</div>
-          <p className="map-label">Live map coming soon (GPS integration)</p>
+          <p className="map-label">
+            {location
+              ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
+              : 'No live location yet'}
+          </p>
         </div>
       </div>
 
       <div className="tracker-status">
-        <div className="status-badge">{status}</div>
-        {eta !== '—' && <div className="eta-badge">ETA: {eta}</div>}
+        <div className="status-badge">{dropoffDone ? 'Dropped off' : pickupDone ? 'Picked up' : 'En route'}</div>
+        <div className="eta-badge">Route: {route?.name || 'Not assigned'}</div>
       </div>
 
       <div className="journey-steps">
-        {statuses.map((s, i) => (
-          <div
-            key={i}
-            className={`journey-step ${s.label === status ? 'active' : ''}`}
-            onClick={() => { setStatus(s.label); setEta(s.eta); }}
-          >
+        {steps.map((step) => (
+          <div key={step} className="journey-step active">
             <span className="step-dot" />
-            <span className="step-text">{s.label}</span>
+            <span className="step-text">{step}</span>
           </div>
         ))}
       </div>
-
-      <p className="tracker-note">
-        * Tap a step above to simulate journey progress
-      </p>
     </div>
   );
 };
 
-/** Attendance marking */
-const AttendancePanel = ({ user }) => {
-  const today         = getTodayKey();
-  const [history, setHistory] = useState(getAttendanceHistory);
-  const todayRecord   = history[today];
-
-  const mark = (morning, afternoon) => {
-    const updated = {
-      ...history,
-      [today]: { morning, afternoon, markedAt: new Date().toLocaleTimeString() }
-    };
-    setHistory(updated);
-    saveAttendanceHistory(updated);
-  };
-
-  const last7 = Object.entries(history)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .slice(0, 7);
+const AttendancePanel = ({ child, attendance, onMark, busy }) => {
+  const today = getTodayKey();
+  const todayRecord = attendance.find((item) => item.date === today);
+  const recent = attendance.slice(0, 7);
 
   return (
     <div className="attendance-panel">
       <h3>📋 Attendance</h3>
-
       <div className="attendance-today">
         <h4>Today — {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h4>
 
         {todayRecord ? (
           <div className="attendance-confirmed">
-            <p>✅ Attendance marked at {todayRecord.markedAt}</p>
+            <p>✅ Attendance submitted for {child?.fullName || 'your child'}</p>
             <div className="attendance-badges">
-              <span className={`att-badge ${todayRecord.morning ? 'yes' : 'no'}`}>
-                Morning: {todayRecord.morning ? 'Will attend' : 'Absent'}
+              <span className={`att-badge ${todayRecord.morningAttendance === 'attending' ? 'yes' : 'no'}`}>
+                Morning: {todayRecord.morningAttendance === 'attending' ? 'Will attend' : 'Absent'}
               </span>
-              <span className={`att-badge ${todayRecord.afternoon ? 'yes' : 'no'}`}>
-                Afternoon: {todayRecord.afternoon ? 'Returning by van' : 'Not returning'}
+              <span className={`att-badge ${todayRecord.afternoonTransport === 'returning' ? 'yes' : 'no'}`}>
+                Afternoon: {todayRecord.afternoonTransport === 'returning' ? 'Returning by van' : 'Not returning'}
               </span>
             </div>
-            <button className="btn-secondary" onClick={() => {
-              const updated = { ...history };
-              delete updated[today];
-              setHistory(updated);
-              saveAttendanceHistory(updated);
-            }}>
-              Change
-            </button>
           </div>
         ) : (
           <div className="attendance-form">
             <p className="att-prompt">Please confirm your child's attendance for today:</p>
             <div className="att-options">
-              <button className="att-btn yes" onClick={() => mark(true, true)}>
+              <button className="att-btn yes" disabled={busy} onClick={() => onMark('attending', 'returning')}>
                 ✅ Going to school &amp; returning by van
               </button>
-              <button className="att-btn partial" onClick={() => mark(true, false)}>
+              <button className="att-btn partial" disabled={busy} onClick={() => onMark('attending', 'not-returning')}>
                 🚶 Going to school, NOT returning by van
               </button>
-              <button className="att-btn no" onClick={() => mark(false, false)}>
+              <button className="att-btn no" disabled={busy} onClick={() => onMark('absent', 'not-returning')}>
                 ❌ Not attending school today
               </button>
             </div>
@@ -160,19 +110,21 @@ const AttendancePanel = ({ user }) => {
 
       <div className="attendance-history">
         <h4>Recent Attendance History</h4>
-        {last7.length === 0 ? (
+        {recent.length === 0 ? (
           <p className="empty-state">No history yet.</p>
         ) : (
           <table className="history-table">
             <thead>
-              <tr><th>Date</th><th>Morning</th><th>Afternoon</th></tr>
+              <tr><th>Date</th><th>Morning</th><th>Afternoon</th><th>Pickup</th><th>Drop-off</th></tr>
             </thead>
             <tbody>
-              {last7.map(([date, rec]) => (
-                <tr key={date}>
-                  <td>{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
-                  <td>{rec.morning   ? '✅' : '❌'}</td>
-                  <td>{rec.afternoon ? '✅' : '❌'}</td>
+              {recent.map((record) => (
+                <tr key={record._id}>
+                  <td>{record.date}</td>
+                  <td>{record.morningAttendance === 'attending' ? '✅' : '❌'}</td>
+                  <td>{record.afternoonTransport === 'returning' ? '✅' : '❌'}</td>
+                  <td>{record.pickupStatus === 'picked-up' ? '✅' : record.pickupStatus === 'pending' ? '⏳' : '—'}</td>
+                  <td>{record.dropoffStatus === 'dropped-off' ? '✅' : record.dropoffStatus === 'pending' ? '⏳' : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -183,35 +135,25 @@ const AttendancePanel = ({ user }) => {
   );
 };
 
-/** Notifications */
-const NotificationsPanel = () => {
-  const [notifs, setNotifs] = useState(getNotifications);
-
-  const markAllRead = () => {
-    const updated = notifs.map(n => ({ ...n, read: true }));
-    setNotifs(updated);
-    saveNotifications(updated);
-  };
-
-  const unread = notifs.filter(n => !n.read).length;
+const NotificationsPanel = ({ notifications, onMarkAllRead }) => {
+  const unread = notifications.filter((item) => !item.read).length;
 
   return (
     <div className="notif-panel">
       <div className="notif-header">
         <h3>🔔 Notifications {unread > 0 && <span className="badge">{unread}</span>}</h3>
-        {unread > 0 && <button className="btn-secondary" onClick={markAllRead}>Mark all read</button>}
+        {unread > 0 && <button className="btn-secondary" onClick={onMarkAllRead}>Mark all read</button>}
       </div>
-
       <div className="notif-list">
-        {notifs.length === 0 ? (
+        {notifications.length === 0 ? (
           <p className="empty-state">No notifications.</p>
         ) : (
-          notifs.map(n => (
-            <div key={n.id} className={`notif-item ${n.read ? 'read' : 'unread'} type-${n.type}`}>
+          notifications.map((notification) => (
+            <div key={notification._id} className={`notif-item ${notification.read ? 'read' : 'unread'} type-${notification.type}`}>
               <div className="notif-dot" />
               <div className="notif-body">
-                <p className="notif-message">{n.message}</p>
-                <span className="notif-time">{n.time}</span>
+                <p className="notif-message">{notification.message}</p>
+                <span className="notif-time">{new Date(notification.createdAt).toLocaleString()}</span>
               </div>
             </div>
           ))
@@ -221,74 +163,19 @@ const NotificationsPanel = () => {
   );
 };
 
-/** Payment panel */
-const PaymentPanel = () => {
-  const [payments] = useState(getPaymentHistory);
-  const [paying, setPaying]   = useState(false);
-  const [cardNum, setCardNum] = useState('');
-  const [expiry, setExpiry]   = useState('');
-  const [cvv, setCvv]         = useState('');
-  const [paid, setPaid]       = useState(false);
-
-  const pending = payments.find(p => p.status === 'Pending');
-
-  const handlePay = (e) => {
-    e.preventDefault();
-    // Simple front-end simulation — no real payment processing
-    setPaid(true);
-    setPaying(false);
-  };
+const PaymentPanel = ({ payments, onPay, paying }) => {
+  const pending = payments.find((payment) => payment.status !== 'paid');
 
   return (
     <div className="payment-panel">
       <h3>💰 Payments</h3>
-
-      {pending && !paid && (
+      {pending && (
         <div className="payment-alert">
-          <p>⚠️ You have a pending payment for <strong>{pending.month}</strong> — LKR {pending.amount.toLocaleString()}</p>
-          {!paying && (
-            <button className="pay-btn" onClick={() => setPaying(true)}>Pay Now</button>
-          )}
+          <p>⚠️ You have a pending payment for <strong>{toDisplayMonth(pending.month, pending.year)}</strong> — LKR {pending.amount.toLocaleString()}</p>
+          <button className="pay-btn" disabled={paying} onClick={() => onPay(pending._id)}>
+            {paying ? 'Processing...' : 'Pay Now'}
+          </button>
         </div>
-      )}
-
-      {paid && (
-        <div className="payment-success">
-          ✅ Payment for {pending?.month} was successful!
-        </div>
-      )}
-
-      {paying && (
-        <form className="payment-form" onSubmit={handlePay}>
-          <h4>Secure Payment — LKR {pending?.amount.toLocaleString()}</h4>
-          <div className="form-group">
-            <label>Card Number</label>
-            <input
-              type="text"
-              maxLength={19}
-              placeholder="1234 5678 9012 3456"
-              value={cardNum}
-              onChange={e => setCardNum(e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim())}
-              required
-            />
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Expiry</label>
-              <input type="text" placeholder="MM/YY" maxLength={5} value={expiry}
-                onChange={e => setExpiry(e.target.value)} required />
-            </div>
-            <div className="form-group">
-              <label>CVV</label>
-              <input type="password" placeholder="•••" maxLength={3} value={cvv}
-                onChange={e => setCvv(e.target.value)} required />
-            </div>
-          </div>
-          <div className="form-actions">
-            <button type="button" className="btn-secondary" onClick={() => setPaying(false)}>Cancel</button>
-            <button type="submit" className="pay-btn">Confirm Payment</button>
-          </div>
-        </form>
       )}
 
       <div className="payment-history">
@@ -298,16 +185,12 @@ const PaymentPanel = () => {
             <tr><th>Month</th><th>Amount</th><th>Status</th><th>Date</th></tr>
           </thead>
           <tbody>
-            {payments.map(p => (
-              <tr key={p.id}>
-                <td>{p.month}</td>
-                <td>LKR {p.amount.toLocaleString()}</td>
-                <td>
-                  <span className={`status-pill ${p.status === 'Paid' ? 'paid' : 'pending'}`}>
-                    {p.status}
-                  </span>
-                </td>
-                <td>{p.date || '—'}</td>
+            {payments.map((payment) => (
+              <tr key={payment._id}>
+                <td>{toDisplayMonth(payment.month, payment.year)}</td>
+                <td>LKR {payment.amount.toLocaleString()}</td>
+                <td><span className={`status-pill ${payment.status === 'paid' ? 'paid' : 'pending'}`}>{statusLabelMap[payment.status] || payment.status}</span></td>
+                <td>{payment.paidAt ? new Date(payment.paidAt).toLocaleDateString() : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -317,47 +200,27 @@ const PaymentPanel = () => {
   );
 };
 
-/** Route info panel */
-const RoutePanel = ({ user }) => (
+const RoutePanel = ({ child, route }) => (
   <div className="route-panel">
     <h3>🗺️ Route Information</h3>
-
     <div className="route-card">
       <h4>Your Child's Route</h4>
       <div className="route-info-grid">
-        <div className="route-info-item">
-          <span className="route-label">Child Name</span>
-          <span className="route-value">{user?.childName || 'N/A'}</span>
-        </div>
-        <div className="route-info-item">
-          <span className="route-label">Grade</span>
-          <span className="route-value">{user?.childGrade || 'N/A'}</span>
-        </div>
-        <div className="route-info-item">
-          <span className="route-label">Pickup Point</span>
-          <span className="route-value">{user?.pickupPoint || 'N/A'}</span>
-        </div>
-        <div className="route-info-item">
-          <span className="route-label">Drop-off Point</span>
-          <span className="route-value">{user?.dropoffPoint || 'N/A'}</span>
-        </div>
-        <div className="route-info-item">
-          <span className="route-label">Morning Pickup</span>
-          <span className="route-value">07:30 AM</span>
-        </div>
-        <div className="route-info-item">
-          <span className="route-label">Afternoon Drop-off</span>
-          <span className="route-value">02:00 PM</span>
-        </div>
+        <div className="route-info-item"><span className="route-label">Child Name</span><span className="route-value">{child?.fullName || 'N/A'}</span></div>
+        <div className="route-info-item"><span className="route-label">Grade</span><span className="route-value">{child?.grade || 'N/A'}</span></div>
+        <div className="route-info-item"><span className="route-label">Pickup Point</span><span className="route-value">{child?.pickupPoint || 'N/A'}</span></div>
+        <div className="route-info-item"><span className="route-label">Drop-off Point</span><span className="route-value">{child?.dropoffPoint || 'N/A'}</span></div>
+        <div className="route-info-item"><span className="route-label">Route</span><span className="route-value">{route?.name || 'N/A'}</span></div>
+        <div className="route-info-item"><span className="route-label">Driver</span><span className="route-value">{route?.driver?.name || 'N/A'}</span></div>
       </div>
     </div>
 
     <div className="route-stops">
-      <h4>Route Stops (Morning)</h4>
+      <h4>Route Stops</h4>
       <ol className="stops-list">
-        {['Depot', user?.pickupPoint || 'Your Stop', 'Main Junction', 'School Gate'].map((stop, i) => (
-          <li key={i} className={stop === (user?.pickupPoint) ? 'your-stop' : ''}>
-            {stop} {stop === user?.pickupPoint && <span className="you-badge">← You</span>}
+        {(route?.stops || []).map((stop) => (
+          <li key={stop} className={stop === child?.pickupPoint ? 'your-stop' : ''}>
+            {stop} {stop === child?.pickupPoint && <span className="you-badge">← You</span>}
           </li>
         ))}
       </ol>
@@ -365,115 +228,169 @@ const RoutePanel = ({ user }) => (
   </div>
 );
 
-/* ─────────────────────────────────────────────
-   Monthly Report panel (Parent)
-───────────────────────────────────────────── */
-const MonthlyReport = ({ user }) => {
-  const months = [
-    { month: 'March 2026',    days: 21, present: 18, absent: 3, pickedUp: 18, droppedOff: 17, feePaid: false, amount: 3500 },
-    { month: 'February 2026', days: 20, present: 19, absent: 1, pickedUp: 19, droppedOff: 19, feePaid: true,  amount: 3500 },
-    { month: 'January 2026',  days: 22, present: 20, absent: 2, pickedUp: 20, droppedOff: 20, feePaid: true,  amount: 3500 },
-  ];
-
-  const [selected, setSelected] = React.useState(months[0]);
+const ReportPanel = ({ report, selectedMonth, onChangeMonth }) => {
+  const summary = report?.summary;
+  const payment = report?.payment;
 
   return (
     <div className="monthly-report">
       <h3>📅 Monthly Transport Report</h3>
-
       <div className="month-selector">
-        {months.map(m => (
-          <button
-            key={m.month}
-            className={`month-btn ${selected.month === m.month ? 'active' : ''}`}
-            onClick={() => setSelected(m)}
-          >
-            {m.month}
+        {monthOptions.map((option) => (
+          <button key={option.label} className={`month-btn ${selectedMonth.label === option.label ? 'active' : ''}`} onClick={() => onChangeMonth(option)}>
+            {option.label}
           </button>
         ))}
       </div>
 
-      <div className="report-child-info">
-        <span>👧 <strong>{user?.childName || 'Your Child'}</strong></span>
-        <span>{user?.childGrade || ''}</span>
-      </div>
+      {summary ? (
+        <>
+          <div className="report-stats-grid">
+            <div className="report-stat blue"><span className="rs-value">{summary.present}</span><span className="rs-label">Days Present</span></div>
+            <div className="report-stat red"><span className="rs-value">{summary.absent}</span><span className="rs-label">Days Absent</span></div>
+            <div className="report-stat green"><span className="rs-value">{summary.pickedUp}</span><span className="rs-label">Picked Up</span></div>
+            <div className="report-stat orange"><span className="rs-value">{summary.droppedOff}</span><span className="rs-label">Dropped Off</span></div>
+          </div>
 
-      <div className="report-stats-grid">
-        <div className="report-stat blue">
-          <span className="rs-value">{selected.present}</span>
-          <span className="rs-label">Days Present</span>
-        </div>
-        <div className="report-stat red">
-          <span className="rs-value">{selected.absent}</span>
-          <span className="rs-label">Days Absent</span>
-        </div>
-        <div className="report-stat green">
-          <span className="rs-value">{selected.pickedUp}</span>
-          <span className="rs-label">Picked Up</span>
-        </div>
-        <div className="report-stat orange">
-          <span className="rs-value">{selected.droppedOff}</span>
-          <span className="rs-label">Dropped Off</span>
-        </div>
-      </div>
+          <div className="report-attendance-bar">
+            <div className="bar-label"><span>Attendance Rate</span><strong>{summary.attendanceRate}%</strong></div>
+            <div className="bar-track"><div className="bar-fill" style={{ width: `${summary.attendanceRate}%` }} /></div>
+          </div>
 
-      <div className="report-attendance-bar">
-        <div className="bar-label">
-          <span>Attendance Rate</span>
-          <strong>{Math.round((selected.present / selected.days) * 100)}%</strong>
-        </div>
-        <div className="bar-track">
-          <div
-            className="bar-fill"
-            style={{ width: `${Math.round((selected.present / selected.days) * 100)}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="report-payment-status">
-        <span>Transport Fee — LKR {selected.amount.toLocaleString()}</span>
-        <span className={`status-pill ${selected.feePaid ? 'paid' : 'pending'}`}>
-          {selected.feePaid ? 'Paid' : 'Pending'}
-        </span>
-      </div>
-
-      <div className="report-note">
-        <p>📌 {selected.month} summary for {user?.childName || 'your child'} on route from <strong>{user?.pickupPoint || 'your stop'}</strong> to school.</p>
-      </div>
+          <div className="report-payment-status">
+            <span>Transport Fee</span>
+            <span className={`status-pill ${payment?.status === 'paid' ? 'paid' : 'pending'}`}>
+              {payment ? statusLabelMap[payment.status] || payment.status : 'No payment record'}
+            </span>
+          </div>
+        </>
+      ) : (
+        <p className="empty-state">No report data available.</p>
+      )}
     </div>
   );
 };
 
-/* ─────────────────────────────────────────────
-   Main ParentDashboard
-───────────────────────────────────────────── */
-const ParentDashboard = ({ onLogout }) => {
+const ParentDashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('tracker');
-  const [user, setUser]           = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(monthOptions[2]);
+  const [child, setChild] = useState(null);
+  const [route, setRoute] = useState(null);
+  const [attendance, setAttendance] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [report, setReport] = useState(null);
+  const [location, setLocation] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadDashboard = async (month = selectedMonth) => {
+    setError('');
+
+    try {
+      const [children, notificationList, paymentList, assignedRoute] = await Promise.all([
+        fetchMyChildren(),
+        fetchNotifications(),
+        fetchPayments(),
+        fetchAssignedRoute(),
+      ]);
+
+      const primaryChild = children[0] || null;
+      setChild(primaryChild);
+      setNotifications(notificationList);
+      setPayments(paymentList);
+      setRoute(assignedRoute);
+
+      if (primaryChild) {
+        const [attendanceList, reportData] = await Promise.all([
+          fetchAttendance(`?studentId=${primaryChild._id}`),
+          fetchParentReport(primaryChild._id, month.month, month.year),
+        ]);
+        setAttendance(attendanceList);
+        setReport(reportData);
+      }
+
+      if (assignedRoute?.driver?._id) {
+        const latestLocation = await fetchLatestLocation(assignedRoute.driver._id);
+        setLocation(latestLocation);
+      } else {
+        setLocation(null);
+      }
+    } catch (apiError) {
+      setError(apiError.message || 'Failed to load dashboard.');
+    }
+  };
 
   useEffect(() => {
-    const saved = localStorage.getItem('schoolVanUser');
-    if (saved) setUser(JSON.parse(saved));
-  }, []);
+    loadDashboard(selectedMonth);
+  }, [selectedMonth.label]);
+
+  const handleAttendanceMark = async (morningAttendance, afternoonTransport) => {
+    if (!child) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await markParentAttendance({
+        studentId: child._id,
+        date: getTodayKey(),
+        morningAttendance,
+        afternoonTransport,
+      });
+      await loadDashboard(selectedMonth);
+    } catch (apiError) {
+      setError(apiError.message || 'Failed to mark attendance.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    const unread = notifications.filter((item) => !item.read);
+    await Promise.all(unread.map((item) => markNotificationRead(item._id)));
+    await loadDashboard(selectedMonth);
+  };
+
+  const handlePay = async (paymentId) => {
+    setBusy(true);
+    try {
+      await payPayment(paymentId, { method: 'online' });
+      await loadDashboard(selectedMonth);
+    } catch (apiError) {
+      setError(apiError.message || 'Payment failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const tabs = [
-    { id: 'tracker',      label: '🗺️ Live Track',   },
-    { id: 'attendance',   label: '📋 Attendance',   },
-    { id: 'notifications',label: '🔔 Alerts',       },
-    { id: 'payments',     label: '💰 Payments',     },
-    { id: 'route',        label: '🚏 Route',        },
-    { id: 'report',       label: '📅 Report',       },
+    { id: 'tracker', label: '🗺️ Live Track' },
+    { id: 'attendance', label: '📋 Attendance' },
+    { id: 'notifications', label: '🔔 Alerts' },
+    { id: 'payments', label: '💰 Payments' },
+    { id: 'route', label: '🚏 Route' },
+    { id: 'report', label: '📅 Report' },
   ];
+
+  const todayAttendance = attendance.find((item) => item.date === getTodayKey());
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'tracker':       return <LiveTracker user={user} />;
-      case 'attendance':    return <AttendancePanel user={user} />;
-      case 'notifications': return <NotificationsPanel />;
-      case 'payments':      return <PaymentPanel />;
-      case 'route':         return <RoutePanel user={user} />;
-      case 'report':        return <MonthlyReport user={user} />;
-      default:              return null;
+      case 'tracker':
+        return <TrackerPanel route={route} location={location} todayAttendance={todayAttendance} />;
+      case 'attendance':
+        return <AttendancePanel child={child} attendance={attendance} onMark={handleAttendanceMark} busy={busy} />;
+      case 'notifications':
+        return <NotificationsPanel notifications={notifications} onMarkAllRead={handleMarkAllRead} />;
+      case 'payments':
+        return <PaymentPanel payments={payments} onPay={handlePay} paying={busy} />;
+      case 'route':
+        return <RoutePanel child={child} route={route} />;
+      case 'report':
+        return <ReportPanel report={report} selectedMonth={selectedMonth} onChangeMonth={setSelectedMonth} />;
+      default:
+        return null;
     }
   };
 
@@ -482,26 +399,21 @@ const ParentDashboard = ({ onLogout }) => {
       <div className="pd-header">
         <div className="pd-welcome">
           <h2>👪 Parent Dashboard</h2>
-          <p>Welcome, {user?.name || 'Parent'}! Tracking {user?.childName || 'your child'}.</p>
+          <p>Welcome, {user?.name || 'Parent'}! Tracking {child?.fullName || user?.childName || 'your child'}.</p>
         </div>
-        <button className="logout-btn" onClick={onLogout}>Logout</button>
       </div>
 
+      {error && <div className="payment-alert"><p>{error}</p></div>}
+
       <div className="pd-tabs">
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            className={`pd-tab ${activeTab === t.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(t.id)}
-          >
-            {t.label}
+        {tabs.map((tab) => (
+          <button key={tab.id} className={`pd-tab ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+            {tab.label}
           </button>
         ))}
       </div>
 
-      <div className="pd-content">
-        {renderTab()}
-      </div>
+      <div className="pd-content">{renderTab()}</div>
     </div>
   );
 };

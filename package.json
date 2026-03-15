@@ -9,7 +9,10 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build"
+    "build": "react-scripts build",
+    "backend:start": "npm --prefix backend run dev",
+    "backend:prod": "npm --prefix backend start",
+    "backend:install": "npm --prefix backend install"
   },
   "browserslist": {
     "production": [">0.2%", "not dead", "not op_mini all"],

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './RegistrationPage.css';
+import { registerUser } from './api';
 
 const RegistrationPage = ({ onRegister, onNavigate }) => {
   const [userType, setUserType] = useState(null);
@@ -16,8 +17,11 @@ const RegistrationPage = ({ onRegister, onNavigate }) => {
     childGrade: '',
     pickupPoint: '',
     dropoffPoint: '',
-    adminCode: ''
+    adminCode: '',
+    password: ''
   });
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -29,14 +33,26 @@ const RegistrationPage = ({ onRegister, onNavigate }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setError('');
     if (userType === 'admin' && formData.adminCode !== 'ADMIN2026') {
-      alert('Invalid admin access code. Please try again.');
+      setError('Invalid admin access code. Please try again.');
       return;
     }
-    onRegister({
-      type: userType,
-      ...formData
-    });
+
+    setSubmitting(true);
+    registerUser({
+      role: userType,
+      ...formData,
+    })
+      .then((response) => {
+        onRegister(response);
+      })
+      .catch((apiError) => {
+        setError(apiError.message || 'Registration failed.');
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   const renderDriverForm = () => (
@@ -90,6 +106,18 @@ const RegistrationPage = ({ onRegister, onNavigate }) => {
       </div>
 
       <div className="form-group">
+        <label>Password *</label>
+        <input
+          type="password"
+          name="password"
+          required
+          value={formData.password}
+          onChange={handleInputChange}
+          placeholder="Create a password"
+        />
+      </div>
+
+      <div className="form-group">
         <label>License Number *</label>
         <input
           type="text"
@@ -135,7 +163,8 @@ const RegistrationPage = ({ onRegister, onNavigate }) => {
         />
       </div>
 
-      <button type="submit" className="submit-btn">Register as Driver</button>
+      {error && <p className="admin-note">{error}</p>}
+      <button type="submit" className="submit-btn" disabled={submitting}>{submitting ? 'Creating account...' : 'Register as Driver'}</button>
     </form>
   );
 
@@ -186,6 +215,18 @@ const RegistrationPage = ({ onRegister, onNavigate }) => {
           value={formData.email}
           onChange={handleInputChange}
           placeholder="Enter email address"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Password *</label>
+        <input
+          type="password"
+          name="password"
+          required
+          value={formData.password}
+          onChange={handleInputChange}
+          placeholder="Create a password"
         />
       </div>
 
@@ -248,7 +289,8 @@ const RegistrationPage = ({ onRegister, onNavigate }) => {
         />
       </div>
 
-      <button type="submit" className="submit-btn">Register as Parent</button>
+      {error && <p className="admin-note">{error}</p>}
+      <button type="submit" className="submit-btn" disabled={submitting}>{submitting ? 'Creating account...' : 'Register as Parent'}</button>
     </form>
   );
 
@@ -282,12 +324,19 @@ const RegistrationPage = ({ onRegister, onNavigate }) => {
       </div>
 
       <div className="form-group">
+        <label>Password *</label>
+        <input type="password" name="password" required value={formData.password}
+          onChange={handleInputChange} placeholder="Create a password" />
+      </div>
+
+      <div className="form-group">
         <label>Admin Access Code *</label>
         <input type="password" name="adminCode" required value={formData.adminCode}
           onChange={handleInputChange} placeholder="Enter secret access code" />
       </div>
 
-      <button type="submit" className="submit-btn">Access Admin Dashboard</button>
+      {error && <p className="admin-note">{error}</p>}
+      <button type="submit" className="submit-btn" disabled={submitting}>{submitting ? 'Creating account...' : 'Access Admin Dashboard'}</button>
     </form>
   );
 

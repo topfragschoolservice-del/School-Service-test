@@ -1,72 +1,39 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './AdminDashboard.css';
+import {
+  deleteStudent,
+  deleteUser,
+  fetchAdminReport,
+  fetchAttendance,
+  fetchPayments,
+  fetchRoutes,
+  fetchStudents,
+  fetchUsers,
+  registerUser,
+} from './api';
+import { formatPaymentMonth, monthOptions } from './dateUtils';
 
-/* ─────────────────────────────────────────────
-   Seed / helper data
-───────────────────────────────────────────── */
-const SEED_STUDENTS = [
-  { id: 'S001', name: 'Amal Perera',    grade: 'Grade 5', route: 'Route A', parent: 'Kamala Perera',   phone: '077-1234567', fee: 3500, status: 'Active' },
-  { id: 'S002', name: 'Nimal Silva',    grade: 'Grade 3', route: 'Route B', parent: 'Sunil Silva',     phone: '076-2345678', fee: 3500, status: 'Active' },
-  { id: 'S003', name: 'Dilani Fernando',grade: 'Grade 7', route: 'Route A', parent: 'Ravi Fernando',   phone: '071-3456789', fee: 3500, status: 'Active' },
-  { id: 'S004', name: 'Kasun Bandara',  grade: 'Grade 2', route: 'Route C', parent: 'Mala Bandara',    phone: '072-4567890', fee: 3500, status: 'Inactive'},
-];
+const titleCase = (value = '') => value.charAt(0).toUpperCase() + value.slice(1);
 
-const SEED_DRIVERS = [
-  { id: 'D001', name: 'Suresh Kumar',   phone: '077-9876543', license: 'B1234567', vehicle: 'CAB-1234', route: 'Route A', experience: 8,  status: 'Active'  },
-  { id: 'D002', name: 'Priya Rathnayake',phone:'076-8765432', license: 'B9876543', vehicle: 'CAB-5678', route: 'Route B', experience: 5,  status: 'Active'  },
-  { id: 'D003', name: 'Roshan Mendis',  phone: '075-7654321', license: 'B5554433', vehicle: 'CAB-9012', route: 'Route C', experience: 12, status: 'Active'  },
-];
-
-const SEED_ROUTES = [
-  { id: 'RA', name: 'Route A', stops: ['Depot', 'Maharagama', 'Kottawa', 'Pannipitiya', 'School'], driver: 'Suresh Kumar',    students: 12, distance: '18 km' },
-  { id: 'RB', name: 'Route B', stops: ['Depot', 'Nugegoda', 'Kohuwala', 'Boralesgamuwa', 'School'], driver: 'Priya Rathnayake', students: 10, distance: '14 km' },
-  { id: 'RC', name: 'Route C', stops: ['Depot', 'Piliyandala', 'Kesbewa', 'Bandaragama', 'School'], driver: 'Roshan Mendis',    students: 8,  distance: '22 km' },
-];
-
-const SEED_PAYMENTS = [
-  { id: 'P001', student: 'Amal Perera',     month: 'March 2026',    amount: 3500, status: 'Paid',    date: '2026-03-05' },
-  { id: 'P002', student: 'Nimal Silva',     month: 'March 2026',    amount: 3500, status: 'Pending', date: null },
-  { id: 'P003', student: 'Dilani Fernando', month: 'March 2026',    amount: 3500, status: 'Paid',    date: '2026-03-08' },
-  { id: 'P004', student: 'Kasun Bandara',   month: 'February 2026', amount: 3500, status: 'Overdue', date: null },
-  { id: 'P005', student: 'Amal Perera',     month: 'February 2026', amount: 3500, status: 'Paid',    date: '2026-02-04' },
-  { id: 'P006', student: 'Nimal Silva',     month: 'February 2026', amount: 3500, status: 'Paid',    date: '2026-02-07' },
-];
-
-const SEED_ATTENDANCE = (() => {
-  const days = ['2026-03-09','2026-03-10','2026-03-11','2026-03-12','2026-03-13'];
-  const rows = [];
-  SEED_STUDENTS.forEach(s => {
-    days.forEach(d => {
-      rows.push({ student: s.name, date: d, morning: Math.random() > 0.15, afternoon: Math.random() > 0.2 });
-    });
-  });
-  return rows;
-})();
-
-/* ─────────────────────────────────────────────
-   Sub-panels
-───────────────────────────────────────────── */
-
-/* Overview */
-const Overview = ({ students, drivers, payments }) => {
-  const totalRevenue  = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0);
-  const pendingAmount = payments.filter(p => p.status !== 'Paid').reduce((s, p) => s + p.amount, 0);
+const Overview = ({ students, drivers, payments, report }) => {
+  const collected = payments.filter((payment) => payment.status === 'paid').reduce((sum, payment) => sum + payment.amount, 0);
+  const pending = payments.filter((payment) => payment.status !== 'paid').reduce((sum, payment) => sum + payment.amount, 0);
 
   const stats = [
-    { label: 'Total Students', value: students.length,                        icon: '👧', color: '#3498db' },
-    { label: 'Active Drivers',  value: drivers.filter(d=>d.status==='Active').length, icon: '🚐', color: '#2ecc71' },
-    { label: 'Revenue (Mar)',   value: `LKR ${totalRevenue.toLocaleString()}`, icon: '💰', color: '#f39c12' },
-    { label: 'Pending Fees',    value: `LKR ${pendingAmount.toLocaleString()}`,icon: '⚠️', color: '#e74c3c' },
+    { label: 'Total Students', value: students.length, icon: '👧', color: '#3498db' },
+    { label: 'Active Drivers', value: drivers.length, icon: '🚐', color: '#2ecc71' },
+    { label: 'Fees Collected', value: `LKR ${collected.toLocaleString()}`, icon: '💰', color: '#f39c12' },
+    { label: 'Attendance Rate', value: `${report?.attendanceRate || 0}%`, icon: '📊', color: '#9b59b6' },
   ];
 
   return (
     <div className="overview-panel">
       <div className="stats-grid">
-        {stats.map((s, i) => (
-          <div className="stat-card" key={i} style={{ borderTop: `5px solid ${s.color}` }}>
-            <div className="stat-icon">{s.icon}</div>
-            <div className="stat-value">{s.value}</div>
-            <div className="stat-label">{s.label}</div>
+        {stats.map((stat) => (
+          <div className="stat-card" key={stat.label} style={{ borderTop: `5px solid ${stat.color}` }}>
+            <div className="stat-icon">{stat.icon}</div>
+            <div className="stat-value">{stat.value}</div>
+            <div className="stat-label">{stat.label}</div>
           </div>
         ))}
       </div>
@@ -77,11 +44,11 @@ const Overview = ({ students, drivers, payments }) => {
           <table className="admin-table">
             <thead><tr><th>Student</th><th>Month</th><th>Status</th></tr></thead>
             <tbody>
-              {payments.slice(0, 5).map(p => (
-                <tr key={p.id}>
-                  <td>{p.student}</td>
-                  <td>{p.month}</td>
-                  <td><span className={`status-pill ${p.status.toLowerCase()}`}>{p.status}</span></td>
+              {payments.slice(0, 5).map((payment) => (
+                <tr key={payment._id}>
+                  <td>{payment.student?.fullName || '—'}</td>
+                  <td>{formatPaymentMonth(payment.month, payment.year)}</td>
+                  <td><span className={`status-pill ${payment.status}`}>{titleCase(payment.status)}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -91,13 +58,13 @@ const Overview = ({ students, drivers, payments }) => {
         <div className="overview-section">
           <h4>Driver Status</h4>
           <table className="admin-table">
-            <thead><tr><th>Driver</th><th>Route</th><th>Vehicle</th></tr></thead>
+            <thead><tr><th>Driver</th><th>Vehicle</th><th>Experience</th></tr></thead>
             <tbody>
-              {drivers.map(d => (
-                <tr key={d.id}>
-                  <td>{d.name}</td>
-                  <td>{d.route}</td>
-                  <td>{d.vehicle}</td>
+              {drivers.map((driver) => (
+                <tr key={driver._id}>
+                  <td>{driver.name}</td>
+                  <td>{driver.driverProfile?.vehicleNumber || '—'}</td>
+                  <td>{driver.driverProfile?.experience || 0} yrs</td>
                 </tr>
               ))}
             </tbody>
@@ -108,73 +75,82 @@ const Overview = ({ students, drivers, payments }) => {
   );
 };
 
-/* Students */
-const StudentsPanel = ({ students, setStudents }) => {
-  const [search, setSearch]   = useState('');
+const StudentsPanel = ({ students, routes, onCreate, onDelete, busy }) => {
+  const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState({ id:'', name:'', grade:'', route:'', parent:'', phone:'', fee:3500, status:'Active' });
+  const [form, setForm] = useState({
+    name: '',
+    id: '',
+    phone: '',
+    email: '',
+    password: 'parent123',
+    childName: '',
+    childGrade: '',
+    pickupPoint: '',
+    dropoffPoint: '',
+    routeId: '',
+  });
 
-  const filtered = students.filter(s =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.id.toLowerCase().includes(search.toLowerCase())
+  const filtered = students.filter((student) =>
+    student.fullName.toLowerCase().includes(search.toLowerCase()) ||
+    student.studentId.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleAdd = (e) => {
-    e.preventDefault();
-    setStudents(prev => [...prev, { ...form }]);
-    setForm({ id:'', name:'', grade:'', route:'', parent:'', phone:'', fee:3500, status:'Active' });
+  const submit = async (event) => {
+    event.preventDefault();
+    await onCreate(form);
+    setForm({
+      name: '',
+      id: '',
+      phone: '',
+      email: '',
+      password: 'parent123',
+      childName: '',
+      childGrade: '',
+      pickupPoint: '',
+      dropoffPoint: '',
+      routeId: '',
+    });
     setShowForm(false);
   };
-
-  const remove = (id) => setStudents(prev => prev.filter(s => s.id !== id));
 
   return (
     <div className="students-panel">
       <div className="panel-actions">
-        <input className="search-input" placeholder="🔍 Search students…" value={search}
-          onChange={e => setSearch(e.target.value)} />
-        <button className="add-btn" onClick={() => setShowForm(!showForm)}>
-          {showForm ? '✕ Cancel' : '+ Add Student'}
-        </button>
+        <input className="search-input" placeholder="🔍 Search students…" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <button className="add-btn" onClick={() => setShowForm(!showForm)}>{showForm ? '✕ Cancel' : '+ Add Parent & Student'}</button>
       </div>
 
       {showForm && (
-        <form className="admin-form" onSubmit={handleAdd}>
-          <h4>New Student</h4>
+        <form className="admin-form" onSubmit={submit}>
+          <h4>New Parent & Student</h4>
           <div className="form-grid">
-            {[
-              { name:'id', placeholder:'Student ID', label:'ID' },
-              { name:'name', placeholder:'Full Name', label:'Name' },
-              { name:'grade', placeholder:'e.g. Grade 5', label:'Grade' },
-              { name:'route', placeholder:'e.g. Route A', label:'Route' },
-              { name:'parent', placeholder:"Parent's Name", label:'Parent' },
-              { name:'phone', placeholder:'07X-XXXXXXX', label:'Phone' },
-            ].map(f => (
-              <div className="form-group" key={f.name}>
-                <label>{f.label}</label>
-                <input type="text" placeholder={f.placeholder} value={form[f.name]}
-                  onChange={e => setForm(prev => ({ ...prev, [f.name]: e.target.value }))} required />
-              </div>
-            ))}
+            <div className="form-group"><label>Parent Name</label><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></div>
+            <div className="form-group"><label>Parent ID</label><input value={form.id} onChange={(event) => setForm({ ...form, id: event.target.value })} required /></div>
+            <div className="form-group"><label>Phone</label><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required /></div>
+            <div className="form-group"><label>Email</label><input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></div>
+            <div className="form-group"><label>Child Name</label><input value={form.childName} onChange={(event) => setForm({ ...form, childName: event.target.value })} required /></div>
+            <div className="form-group"><label>Grade</label><input value={form.childGrade} onChange={(event) => setForm({ ...form, childGrade: event.target.value })} required /></div>
+            <div className="form-group"><label>Pickup Point</label><input value={form.pickupPoint} onChange={(event) => setForm({ ...form, pickupPoint: event.target.value })} required /></div>
+            <div className="form-group"><label>Drop-off Point</label><input value={form.dropoffPoint} onChange={(event) => setForm({ ...form, dropoffPoint: event.target.value })} required /></div>
+            <div className="form-group"><label>Route</label><select value={form.routeId} onChange={(event) => setForm({ ...form, routeId: event.target.value })}><option value="">Select route</option>{routes.map((route) => <option key={route._id} value={route._id}>{route.name}</option>)}</select></div>
           </div>
-          <button type="submit" className="add-btn">Save Student</button>
+          <button type="submit" className="add-btn" disabled={busy}>Save Parent & Student</button>
         </form>
       )}
 
       <table className="admin-table full">
-        <thead>
-          <tr><th>ID</th><th>Name</th><th>Grade</th><th>Route</th><th>Parent</th><th>Status</th><th></th></tr>
-        </thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Grade</th><th>Route</th><th>Parent</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          {filtered.map(s => (
-            <tr key={s.id}>
-              <td>{s.id}</td>
-              <td>{s.name}</td>
-              <td>{s.grade}</td>
-              <td>{s.route}</td>
-              <td>{s.parent}</td>
-              <td><span className={`status-pill ${s.status.toLowerCase()}`}>{s.status}</span></td>
-              <td><button className="delete-btn" onClick={() => remove(s.id)}>✕</button></td>
+          {filtered.map((student) => (
+            <tr key={student._id}>
+              <td>{student.studentId}</td>
+              <td>{student.fullName}</td>
+              <td>{student.grade}</td>
+              <td>{student.route?.name || '—'}</td>
+              <td>{student.parent?.name || '—'}</td>
+              <td><span className={`status-pill ${student.status}`}>{titleCase(student.status)}</span></td>
+              <td><button className="delete-btn" onClick={() => onDelete(student._id)}>✕</button></td>
             </tr>
           ))}
         </tbody>
@@ -183,64 +159,69 @@ const StudentsPanel = ({ students, setStudents }) => {
   );
 };
 
-/* Drivers */
-const DriversPanel = ({ drivers, setDrivers }) => {
+const DriversPanel = ({ drivers, onCreate, onDelete, busy }) => {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState({ id:'', name:'', phone:'', license:'', vehicle:'', route:'', experience:0, status:'Active' });
+  const [form, setForm] = useState({
+    name: '',
+    id: '',
+    phone: '',
+    email: '',
+    password: 'driver123',
+    licenseNumber: '',
+    vehicleNumber: '',
+    experience: '',
+  });
 
-  const handleAdd = (e) => {
-    e.preventDefault();
-    setDrivers(prev => [...prev, { ...form }]);
-    setForm({ id:'', name:'', phone:'', license:'', vehicle:'', route:'', experience:0, status:'Active' });
+  const submit = async (event) => {
+    event.preventDefault();
+    await onCreate(form);
+    setForm({
+      name: '',
+      id: '',
+      phone: '',
+      email: '',
+      password: 'driver123',
+      licenseNumber: '',
+      vehicleNumber: '',
+      experience: '',
+    });
     setShowForm(false);
   };
-
-  const remove = (id) => setDrivers(prev => prev.filter(d => d.id !== id));
 
   return (
     <div className="drivers-panel">
       <div className="panel-actions">
-        <button className="add-btn" onClick={() => setShowForm(!showForm)}>
-          {showForm ? '✕ Cancel' : '+ Add Driver'}
-        </button>
+        <button className="add-btn" onClick={() => setShowForm(!showForm)}>{showForm ? '✕ Cancel' : '+ Add Driver'}</button>
       </div>
 
       {showForm && (
-        <form className="admin-form" onSubmit={handleAdd}>
+        <form className="admin-form" onSubmit={submit}>
           <h4>New Driver</h4>
           <div className="form-grid">
-            {[
-              { name:'id', label:'Driver ID' }, { name:'name', label:'Full Name' },
-              { name:'phone', label:'Phone' },   { name:'license', label:'License No.' },
-              { name:'vehicle', label:'Vehicle No.' }, { name:'route', label:'Assigned Route' },
-              { name:'experience', label:'Experience (yrs)' },
-            ].map(f => (
-              <div className="form-group" key={f.name}>
-                <label>{f.label}</label>
-                <input type="text" value={form[f.name]}
-                  onChange={e => setForm(prev => ({ ...prev, [f.name]: e.target.value }))} required />
-              </div>
-            ))}
+            <div className="form-group"><label>Full Name</label><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></div>
+            <div className="form-group"><label>Driver ID</label><input value={form.id} onChange={(event) => setForm({ ...form, id: event.target.value })} required /></div>
+            <div className="form-group"><label>Phone</label><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required /></div>
+            <div className="form-group"><label>Email</label><input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></div>
+            <div className="form-group"><label>License No.</label><input value={form.licenseNumber} onChange={(event) => setForm({ ...form, licenseNumber: event.target.value })} required /></div>
+            <div className="form-group"><label>Vehicle No.</label><input value={form.vehicleNumber} onChange={(event) => setForm({ ...form, vehicleNumber: event.target.value })} required /></div>
+            <div className="form-group"><label>Experience</label><input value={form.experience} onChange={(event) => setForm({ ...form, experience: event.target.value })} /></div>
           </div>
-          <button type="submit" className="add-btn">Save Driver</button>
+          <button type="submit" className="add-btn" disabled={busy}>Save Driver</button>
         </form>
       )}
 
       <table className="admin-table full">
-        <thead>
-          <tr><th>ID</th><th>Name</th><th>Phone</th><th>License</th><th>Vehicle</th><th>Route</th><th>Exp.</th><th></th></tr>
-        </thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>License</th><th>Vehicle</th><th>Exp.</th><th></th></tr></thead>
         <tbody>
-          {drivers.map(d => (
-            <tr key={d.id}>
-              <td>{d.id}</td>
-              <td>{d.name}</td>
-              <td>{d.phone}</td>
-              <td>{d.license}</td>
-              <td>{d.vehicle}</td>
-              <td>{d.route}</td>
-              <td>{d.experience} yr{d.experience !== 1 ? 's' : ''}</td>
-              <td><button className="delete-btn" onClick={() => remove(d.id)}>✕</button></td>
+          {drivers.map((driver) => (
+            <tr key={driver._id}>
+              <td>{driver.accountId}</td>
+              <td>{driver.name}</td>
+              <td>{driver.phone}</td>
+              <td>{driver.driverProfile?.licenseNumber || '—'}</td>
+              <td>{driver.driverProfile?.vehicleNumber || '—'}</td>
+              <td>{driver.driverProfile?.experience || 0} yrs</td>
+              <td><button className="delete-btn" onClick={() => onDelete(driver._id)}>✕</button></td>
             </tr>
           ))}
         </tbody>
@@ -249,78 +230,62 @@ const DriversPanel = ({ drivers, setDrivers }) => {
   );
 };
 
-/* Routes */
-const RoutesPanel = ({ routes }) => (
+const RoutesPanel = ({ routes, students }) => (
   <div className="routes-panel">
     <div className="routes-grid">
-      {routes.map(r => (
-        <div className="route-card" key={r.id}>
-          <div className="route-card-header">
-            <h4>{r.name}</h4>
-            <span className="students-count">{r.students} students</span>
+      {routes.map((route) => {
+        const studentCount = students.filter((student) => student.route?._id === route._id).length;
+        return (
+          <div className="route-card" key={route._id}>
+            <div className="route-card-header">
+              <h4>{route.name}</h4>
+              <span className="students-count">{studentCount} students</span>
+            </div>
+            <div className="route-meta">
+              <span>🚐 {route.driver?.name || 'Unassigned'}</span>
+              <span>🕒 {route.morningPickupTime || '—'}</span>
+            </div>
+            <div className="route-stops-list">
+              {route.stops.map((stop, index) => (
+                <div key={stop} className="route-stop"><span className="route-stop-num">{index + 1}</span><span>{stop}</span></div>
+              ))}
+            </div>
           </div>
-          <div className="route-meta">
-            <span>🚐 {r.driver}</span>
-            <span>📏 {r.distance}</span>
-          </div>
-          <div className="route-stops-list">
-            {r.stops.map((stop, i) => (
-              <div key={i} className="route-stop">
-                <span className="route-stop-num">{i + 1}</span>
-                <span>{stop}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   </div>
 );
 
-/* Payments */
 const PaymentsPanel = ({ payments }) => {
-  const [filter, setFilter] = useState('All');
-  const filters = ['All', 'Paid', 'Pending', 'Overdue'];
-
-  const filtered = filter === 'All' ? payments : payments.filter(p => p.status === filter);
-
+  const [filter, setFilter] = useState('all');
+  const filtered = filter === 'all' ? payments : payments.filter((payment) => payment.status === filter);
   const totals = {
-    collected: payments.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0),
-    pending:   payments.filter(p => p.status !== 'Paid').reduce((s, p) => s + p.amount, 0),
+    collected: payments.filter((payment) => payment.status === 'paid').reduce((sum, payment) => sum + payment.amount, 0),
+    pending: payments.filter((payment) => payment.status !== 'paid').reduce((sum, payment) => sum + payment.amount, 0),
   };
 
   return (
     <div className="payments-panel">
       <div className="payment-summary">
-        <div className="summary-card green">
-          <span className="summary-label">Collected</span>
-          <span className="summary-value">LKR {totals.collected.toLocaleString()}</span>
-        </div>
-        <div className="summary-card red">
-          <span className="summary-label">Outstanding</span>
-          <span className="summary-value">LKR {totals.pending.toLocaleString()}</span>
-        </div>
+        <div className="summary-card green"><span className="summary-label">Collected</span><span className="summary-value">LKR {totals.collected.toLocaleString()}</span></div>
+        <div className="summary-card red"><span className="summary-label">Outstanding</span><span className="summary-value">LKR {totals.pending.toLocaleString()}</span></div>
       </div>
-
       <div className="filter-row">
-        {filters.map(f => (
-          <button key={f} className={`filter-btn ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
+        {['all', 'paid', 'pending', 'overdue'].map((value) => (
+          <button key={value} className={`filter-btn ${filter === value ? 'active' : ''}`} onClick={() => setFilter(value)}>{titleCase(value)}</button>
         ))}
       </div>
-
       <table className="admin-table full">
-        <thead>
-          <tr><th>ID</th><th>Student</th><th>Month</th><th>Amount</th><th>Status</th><th>Date</th></tr>
-        </thead>
+        <thead><tr><th>Student</th><th>Month</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
         <tbody>
-          {filtered.map(p => (
-            <tr key={p.id}>
-              <td>{p.id}</td>
-              <td>{p.student}</td>
-              <td>{p.month}</td>
-              <td>LKR {p.amount.toLocaleString()}</td>
-              <td><span className={`status-pill ${p.status.toLowerCase()}`}>{p.status}</span></td>
-              <td>{p.date || '—'}</td>
+          {filtered.map((payment) => (
+            <tr key={payment._id}>
+              <td>{payment.student?.fullName || '—'}</td>
+              <td>{formatPaymentMonth(payment.month, payment.year)}</td>
+              <td>LKR {payment.amount.toLocaleString()}</td>
+              <td><span className={`status-pill ${payment.status}`}>{titleCase(payment.status)}</span></td>
+              <td>{payment.paidAt ? new Date(payment.paidAt).toLocaleDateString() : '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -329,36 +294,31 @@ const PaymentsPanel = ({ payments }) => {
   );
 };
 
-/* Attendance report */
-const AttendanceReport = ({ records }) => {
+const AttendanceReport = ({ attendance }) => {
   const [dateFilter, setDateFilter] = useState('');
-
-  const filtered = dateFilter
-    ? records.filter(r => r.date === dateFilter)
-    : records;
-
-  const dates = [...new Set(records.map(r => r.date))].sort((a,b) => b.localeCompare(a));
+  const dates = [...new Set(attendance.map((record) => record.date))].sort((left, right) => right.localeCompare(left));
+  const filtered = dateFilter ? attendance.filter((record) => record.date === dateFilter) : attendance;
 
   return (
     <div className="attendance-report">
       <div className="panel-actions">
-        <select className="search-input" value={dateFilter} onChange={e => setDateFilter(e.target.value)}>
+        <select className="search-input" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)}>
           <option value="">All Days</option>
-          {dates.map(d => <option key={d} value={d}>{new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</option>)}
+          {dates.map((date) => <option key={date} value={date}>{date}</option>)}
         </select>
       </div>
 
       <table className="admin-table full">
-        <thead>
-          <tr><th>Student</th><th>Date</th><th>Morning</th><th>Afternoon</th></tr>
-        </thead>
+        <thead><tr><th>Student</th><th>Date</th><th>Morning</th><th>Afternoon</th><th>Pickup</th><th>Drop-off</th></tr></thead>
         <tbody>
-          {filtered.map((r, i) => (
-            <tr key={i}>
-              <td>{r.student}</td>
-              <td>{new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
-              <td>{r.morning   ? '✅' : '❌'}</td>
-              <td>{r.afternoon ? '✅' : '❌'}</td>
+          {filtered.map((record) => (
+            <tr key={record._id}>
+              <td>{record.student?.fullName || '—'}</td>
+              <td>{record.date}</td>
+              <td>{record.morningAttendance === 'attending' ? '✅' : '❌'}</td>
+              <td>{record.afternoonTransport === 'returning' ? '✅' : '❌'}</td>
+              <td>{record.pickupStatus}</td>
+              <td>{record.dropoffStatus}</td>
             </tr>
           ))}
         </tbody>
@@ -367,163 +327,159 @@ const AttendanceReport = ({ records }) => {
   );
 };
 
-/* ─────────────────────────────────────────────
-   Monthly Report (Admin)
-───────────────────────────────────────────── */
-const MONTHLY_DATA = [
-  {
-    month: 'March 2026',
-    students: 30,
-    avgAttendance: 88,
-    totalTrips: 42,
-    collected: 87500,
-    pending: 17500,
-    routes: [
-      { name: 'Route A', trips: 14, students: 12, avgAtt: 91 },
-      { name: 'Route B', trips: 14, students: 10, avgAtt: 86 },
-      { name: 'Route C', trips: 14, students: 8,  avgAtt: 85 },
-    ],
-  },
-  {
-    month: 'February 2026',
-    students: 30,
-    avgAttendance: 92,
-    totalTrips: 40,
-    collected: 98000,
-    pending: 7000,
-    routes: [
-      { name: 'Route A', trips: 14, students: 12, avgAtt: 94 },
-      { name: 'Route B', trips: 13, students: 10, avgAtt: 91 },
-      { name: 'Route C', trips: 13, students: 8,  avgAtt: 90 },
-    ],
-  },
-  {
-    month: 'January 2026',
-    students: 28,
-    avgAttendance: 90,
-    totalTrips: 44,
-    collected: 91000,
-    pending: 7000,
-    routes: [
-      { name: 'Route A', trips: 15, students: 11, avgAtt: 92 },
-      { name: 'Route B', trips: 15, students: 10, avgAtt: 89 },
-      { name: 'Route C', trips: 14, students: 7,  avgAtt: 88 },
-    ],
-  },
-];
+const AdminMonthlyReport = ({ report, selectedMonth, onChangeMonth, routes, students, attendance }) => (
+  <div className="admin-monthly-report">
+    <div className="month-selector">
+      {monthOptions.map((option) => (
+        <button key={option.label} className={`month-btn ${selectedMonth.label === option.label ? 'active' : ''}`} onClick={() => onChangeMonth(option)}>{option.label}</button>
+      ))}
+    </div>
 
-const AdminMonthlyReport = () => {
-  const [selected, setSelected] = React.useState(MONTHLY_DATA[0]);
+    <div className="amr-stats">
+      <div className="amr-stat" style={{ borderTop: '4px solid #3498db' }}><span className="amr-val">{report?.totalStudents || students.length}</span><span className="amr-lbl">Total Students</span></div>
+      <div className="amr-stat" style={{ borderTop: '4px solid #2ecc71' }}><span className="amr-val">{report?.attendanceRate || 0}%</span><span className="amr-lbl">Avg Attendance</span></div>
+      <div className="amr-stat" style={{ borderTop: '4px solid #9b59b6' }}><span className="amr-val">{attendance.length}</span><span className="amr-lbl">Attendance Records</span></div>
+      <div className="amr-stat" style={{ borderTop: '4px solid #27ae60' }}><span className="amr-val">LKR {(report?.collected || 0).toLocaleString()}</span><span className="amr-lbl">Fees Collected</span></div>
+      <div className="amr-stat" style={{ borderTop: '4px solid #e74c3c' }}><span className="amr-val">LKR {(report?.pending || 0).toLocaleString()}</span><span className="amr-lbl">Outstanding</span></div>
+    </div>
 
-  return (
-    <div className="admin-monthly-report">
-      <div className="month-selector">
-        {MONTHLY_DATA.map(m => (
-          <button
-            key={m.month}
-            className={`month-btn ${selected.month === m.month ? 'active' : ''}`}
-            onClick={() => setSelected(m)}
-          >
-            {m.month}
-          </button>
-        ))}
-      </div>
+    <div className="amr-revenue-bar">
+      <div className="bar-label"><span>Collection Rate</span><strong>{report?.collected || report?.pending ? Math.round(((report?.collected || 0) / ((report?.collected || 0) + (report?.pending || 0))) * 100) : 0}%</strong></div>
+      <div className="bar-track"><div className="bar-fill green" style={{ width: `${report?.collected || report?.pending ? Math.round(((report?.collected || 0) / ((report?.collected || 0) + (report?.pending || 0))) * 100) : 0}%` }} /></div>
+    </div>
 
-      <div className="amr-stats">
-        <div className="amr-stat" style={{ borderTop: '4px solid #3498db' }}>
-          <span className="amr-val">{selected.students}</span>
-          <span className="amr-lbl">Total Students</span>
-        </div>
-        <div className="amr-stat" style={{ borderTop: '4px solid #2ecc71' }}>
-          <span className="amr-val">{selected.avgAttendance}%</span>
-          <span className="amr-lbl">Avg Attendance</span>
-        </div>
-        <div className="amr-stat" style={{ borderTop: '4px solid #9b59b6' }}>
-          <span className="amr-val">{selected.totalTrips}</span>
-          <span className="amr-lbl">Total Trips</span>
-        </div>
-        <div className="amr-stat" style={{ borderTop: '4px solid #27ae60' }}>
-          <span className="amr-val">LKR {selected.collected.toLocaleString()}</span>
-          <span className="amr-lbl">Fees Collected</span>
-        </div>
-        <div className="amr-stat" style={{ borderTop: '4px solid #e74c3c' }}>
-          <span className="amr-val">LKR {selected.pending.toLocaleString()}</span>
-          <span className="amr-lbl">Outstanding</span>
-        </div>
-      </div>
-
-      <div className="amr-revenue-bar">
-        <div className="bar-label">
-          <span>Collection Rate</span>
-          <strong>{Math.round((selected.collected / (selected.collected + selected.pending)) * 100)}%</strong>
-        </div>
-        <div className="bar-track">
-          <div
-            className="bar-fill green"
-            style={{ width: `${Math.round((selected.collected / (selected.collected + selected.pending)) * 100)}%` }}
-          />
-        </div>
-      </div>
-
-      <h4>Per-Route Breakdown</h4>
-      <table className="admin-table full">
-        <thead>
-          <tr>
-            <th>Route</th>
-            <th>Driver Trips</th>
-            <th>Students</th>
-            <th>Avg Attendance</th>
-            <th>Attendance Bar</th>
+    <h4>Per-Route Breakdown</h4>
+    <table className="admin-table full">
+      <thead><tr><th>Route</th><th>Driver</th><th>Students</th><th>Stops</th></tr></thead>
+      <tbody>
+        {routes.map((route) => (
+          <tr key={route._id}>
+            <td>{route.name}</td>
+            <td>{route.driver?.name || 'Unassigned'}</td>
+            <td>{students.filter((student) => student.route?._id === route._id).length}</td>
+            <td>{route.stops.length}</td>
           </tr>
-        </thead>
-        <tbody>
-          {selected.routes.map(r => (
-            <tr key={r.name}>
-              <td><strong>{r.name}</strong></td>
-              <td>{r.trips}</td>
-              <td>{r.students}</td>
-              <td>{r.avgAtt}%</td>
-              <td>
-                <div className="mini-bar-track">
-                  <div className="mini-bar-fill" style={{ width: `${r.avgAtt}%` }} />
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
 
-/* ─────────────────────────────────────────────
-   Main AdminDashboard
-───────────────────────────────────────────── */
-const AdminDashboard = ({ onLogout }) => {
+const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
-  const [students, setStudents]   = useState(SEED_STUDENTS);
-  const [drivers, setDrivers]     = useState(SEED_DRIVERS);
+  const [selectedMonth, setSelectedMonth] = useState(monthOptions[2]);
+  const [students, setStudents] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [report, setReport] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadData = async (month = selectedMonth) => {
+    setError('');
+    try {
+      const [studentList, driverList, routeList, paymentList, attendanceList, reportData] = await Promise.all([
+        fetchStudents(),
+        fetchUsers('driver'),
+        fetchRoutes(),
+        fetchPayments(),
+        fetchAttendance(),
+        fetchAdminReport(month.month, month.year),
+      ]);
+
+      setStudents(studentList);
+      setDrivers(driverList);
+      setRoutes(routeList);
+      setPayments(paymentList);
+      setAttendance(attendanceList);
+      setReport(reportData);
+    } catch (apiError) {
+      setError(apiError.message || 'Failed to load admin dashboard.');
+    }
+  };
+
+  useEffect(() => {
+    loadData(selectedMonth);
+  }, [selectedMonth.label]);
+
+  const createStudent = async (form) => {
+    setBusy(true);
+    try {
+      await registerUser({ role: 'parent', ...form });
+      await loadData(selectedMonth);
+    } catch (apiError) {
+      setError(apiError.message || 'Failed to create parent and student.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createDriver = async (form) => {
+    setBusy(true);
+    try {
+      await registerUser({ role: 'driver', ...form });
+      await loadData(selectedMonth);
+    } catch (apiError) {
+      setError(apiError.message || 'Failed to create driver.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeStudentRecord = async (studentId) => {
+    setBusy(true);
+    try {
+      await deleteStudent(studentId);
+      await loadData(selectedMonth);
+    } catch (apiError) {
+      setError(apiError.message || 'Failed to delete student.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeDriverRecord = async (userId) => {
+    setBusy(true);
+    try {
+      await deleteUser(userId);
+      await loadData(selectedMonth);
+    } catch (apiError) {
+      setError(apiError.message || 'Failed to delete driver.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const tabs = [
-    { id: 'overview',    label: '📊 Overview'   },
-    { id: 'students',    label: '👧 Students'   },
-    { id: 'drivers',     label: '🚐 Drivers'    },
-    { id: 'routes',      label: '🗺️ Routes'     },
-    { id: 'payments',    label: '💰 Payments'   },
-    { id: 'attendance',  label: '📋 Attendance' },
-    { id: 'report',      label: '📅 Reports'    },
+    { id: 'overview', label: '📊 Overview' },
+    { id: 'students', label: '👧 Students' },
+    { id: 'drivers', label: '🚐 Drivers' },
+    { id: 'routes', label: '🗺️ Routes' },
+    { id: 'payments', label: '💰 Payments' },
+    { id: 'attendance', label: '📋 Attendance' },
+    { id: 'report', label: '📅 Reports' },
   ];
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview':   return <Overview students={students} drivers={drivers} payments={SEED_PAYMENTS} />;
-      case 'students':   return <StudentsPanel students={students} setStudents={setStudents} />;
-      case 'drivers':    return <DriversPanel drivers={drivers} setDrivers={setDrivers} />;
-      case 'routes':     return <RoutesPanel routes={SEED_ROUTES} />;
-      case 'payments':   return <PaymentsPanel payments={SEED_PAYMENTS} />;
-      case 'attendance': return <AttendanceReport records={SEED_ATTENDANCE} />;
-      case 'report':     return <AdminMonthlyReport />;
-      default:           return null;
+      case 'overview':
+        return <Overview students={students} drivers={drivers} payments={payments} report={report} />;
+      case 'students':
+        return <StudentsPanel students={students} routes={routes} onCreate={createStudent} onDelete={removeStudentRecord} busy={busy} />;
+      case 'drivers':
+        return <DriversPanel drivers={drivers} onCreate={createDriver} onDelete={removeDriverRecord} busy={busy} />;
+      case 'routes':
+        return <RoutesPanel routes={routes} students={students} />;
+      case 'payments':
+        return <PaymentsPanel payments={payments} />;
+      case 'attendance':
+        return <AttendanceReport attendance={attendance} />;
+      case 'report':
+        return <AdminMonthlyReport report={report} selectedMonth={selectedMonth} onChangeMonth={setSelectedMonth} routes={routes} students={students} attendance={attendance} />;
+      default:
+        return null;
     }
   };
 
@@ -534,23 +490,20 @@ const AdminDashboard = ({ onLogout }) => {
           <h2>🔑 Admin Dashboard</h2>
           <p>School Transport Management System</p>
         </div>
-        <button className="logout-btn" onClick={onLogout}>Logout</button>
       </div>
 
+      {error && <div className="payment-alert"><p>{error}</p></div>}
+
       <div className="admin-tabs">
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            className={`admin-tab ${activeTab === t.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(t.id)}
-          >
-            {t.label}
+        {tabs.map((tab) => (
+          <button key={tab.id} className={`admin-tab ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+            {tab.label}
           </button>
         ))}
       </div>
 
       <div className="admin-content">
-        <h3>{tabs.find(t => t.id === activeTab)?.label}</h3>
+        <h3>{tabs.find((tab) => tab.id === activeTab)?.label}</h3>
         {renderTab()}
       </div>
     </div>
