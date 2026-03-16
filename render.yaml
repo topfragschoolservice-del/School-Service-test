@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: school-transport-app
+    env: node
+    plan: free
+    rootDir: .
+    buildCommand: npm run deploy:build
+    startCommand: npm run deploy:start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5001
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_ACCESS_CODE
+        value: ADMIN2026
+      - key: CLIENT_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false

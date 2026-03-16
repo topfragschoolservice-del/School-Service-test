@@ -12,7 +12,9 @@
     "build": "react-scripts build",
     "backend:start": "npm --prefix backend run dev",
     "backend:prod": "npm --prefix backend start",
-    "backend:install": "npm --prefix backend install"
+    "backend:install": "npm --prefix backend install",
+    "deploy:build": "npm install && npm run backend:install && npm run build",
+    "deploy:start": "npm --prefix backend start"
   },
   "browserslist": {
     "production": [">0.2%", "not dead", "not op_mini all"],
