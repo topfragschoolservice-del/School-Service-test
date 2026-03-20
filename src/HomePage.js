@@ -52,6 +52,10 @@ const HomePage = ({ onNavigate }) => {
         >
           Create Your Account
         </button>
+        <p className="login-link">
+          Already have an account?{' '}
+          <button className="inline-link" onClick={() => onNavigate('login')}>Sign in here</button>
+        </p>
       </div>
     </div>
   );

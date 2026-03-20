@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import './RegistrationPage.css';
+import { registerUser } from './api';
 
-const RegistrationPage = ({ onRegister }) => {
+const RegistrationPage = ({ onRegister, onNavigate }) => {
   const [userType, setUserType] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -15,8 +16,12 @@ const RegistrationPage = ({ onRegister }) => {
     childName: '',
     childGrade: '',
     pickupPoint: '',
-    dropoffPoint: ''
+    dropoffPoint: '',
+    adminCode: '',
+    password: ''
   });
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -28,10 +33,26 @@ const RegistrationPage = ({ onRegister }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onRegister({
-      type: userType,
-      ...formData
-    });
+    setError('');
+    if (userType === 'admin' && formData.adminCode !== 'ADMIN2026') {
+      setError('Invalid admin access code. Please try again.');
+      return;
+    }
+
+    setSubmitting(true);
+    registerUser({
+      role: userType,
+      ...formData,
+    })
+      .then((response) => {
+        onRegister(response);
+      })
+      .catch((apiError) => {
+        setError(apiError.message || 'Registration failed.');
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   const renderDriverForm = () => (
@@ -85,6 +106,18 @@ const RegistrationPage = ({ onRegister }) => {
       </div>
 
       <div className="form-group">
+        <label>Password *</label>
+        <input
+          type="password"
+          name="password"
+          required
+          value={formData.password}
+          onChange={handleInputChange}
+          placeholder="Create a password"
+        />
+      </div>
+
+      <div className="form-group">
         <label>License Number *</label>
         <input
           type="text"
@@ -130,7 +163,8 @@ const RegistrationPage = ({ onRegister }) => {
         />
       </div>
 
-      <button type="submit" className="submit-btn">Register as Driver</button>
+      {error && <p className="admin-note">{error}</p>}
+      <button type="submit" className="submit-btn" disabled={submitting}>{submitting ? 'Creating account...' : 'Register as Driver'}</button>
     </form>
   );
 
@@ -181,6 +215,18 @@ const RegistrationPage = ({ onRegister }) => {
           value={formData.email}
           onChange={handleInputChange}
           placeholder="Enter email address"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Password *</label>
+        <input
+          type="password"
+          name="password"
+          required
+          value={formData.password}
+          onChange={handleInputChange}
+          placeholder="Create a password"
         />
       </div>
 
@@ -243,7 +289,54 @@ const RegistrationPage = ({ onRegister }) => {
         />
       </div>
 
-      <button type="submit" className="submit-btn">Register as Parent</button>
+      {error && <p className="admin-note">{error}</p>}
+      <button type="submit" className="submit-btn" disabled={submitting}>{submitting ? 'Creating account...' : 'Register as Parent'}</button>
+    </form>
+  );
+
+  const renderAdminForm = () => (
+    <form onSubmit={handleSubmit} className="registration-form">
+      <h3>Admin Registration</h3>
+      <p className="admin-note">⚠️ Admin access is restricted. Enter the access code provided by your organisation.</p>
+
+      <div className="form-group">
+        <label>Full Name *</label>
+        <input type="text" name="name" required value={formData.name}
+          onChange={handleInputChange} placeholder="Enter your full name" />
+      </div>
+
+      <div className="form-group">
+        <label>Admin ID *</label>
+        <input type="text" name="id" required value={formData.id}
+          onChange={handleInputChange} placeholder="Enter admin ID" />
+      </div>
+
+      <div className="form-group">
+        <label>Phone Number *</label>
+        <input type="tel" name="phone" required value={formData.phone}
+          onChange={handleInputChange} placeholder="Enter phone number" />
+      </div>
+
+      <div className="form-group">
+        <label>Email</label>
+        <input type="email" name="email" value={formData.email}
+          onChange={handleInputChange} placeholder="Enter email address" />
+      </div>
+
+      <div className="form-group">
+        <label>Password *</label>
+        <input type="password" name="password" required value={formData.password}
+          onChange={handleInputChange} placeholder="Create a password" />
+      </div>
+
+      <div className="form-group">
+        <label>Admin Access Code *</label>
+        <input type="password" name="adminCode" required value={formData.adminCode}
+          onChange={handleInputChange} placeholder="Enter secret access code" />
+      </div>
+
+      {error && <p className="admin-note">{error}</p>}
+      <button type="submit" className="submit-btn" disabled={submitting}>{submitting ? 'Creating account...' : 'Access Admin Dashboard'}</button>
     </form>
   );
 
@@ -284,13 +377,28 @@ const RegistrationPage = ({ onRegister }) => {
                 <li>✓ Make payments online</li>
               </ul>
             </div>
+
+            <div 
+              className="type-card admin-card"
+              onClick={() => setUserType('admin')}
+            >
+              <div className="card-icon">🔑</div>
+              <h3>Admin</h3>
+              <p>Manage students, drivers, routes, and payments for the transport service</p>
+              <ul className="feature-list">
+                <li>✓ Manage students &amp; drivers</li>
+                <li>✓ View all routes</li>
+                <li>✓ Track all payments</li>
+                <li>✓ Generate reports</li>
+              </ul>
+            </div>
           </div>
           
           <button 
             className="back-btn"
-            onClick={() => window.history.back()}
+            onClick={() => onNavigate('home')}
           >
-            ← Back
+            ← Back to Home
           </button>
         </div>
       ) : (
@@ -302,7 +410,7 @@ const RegistrationPage = ({ onRegister }) => {
             ← Change Account Type
           </button>
           
-          {userType === 'driver' ? renderDriverForm() : renderParentForm()}
+          {userType === 'driver' ? renderDriverForm() : userType === 'admin' ? renderAdminForm() : renderParentForm()}
         </div>
       )}
     </div>
